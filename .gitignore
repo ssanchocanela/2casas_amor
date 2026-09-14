@@ -1,0 +1,24 @@
+# Secretos: la URL de la implementación y los tokens no entran aquí jamás
+.env
+.env.*
+!.env.example
+*.token
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+movil-temp/
+
+# Compilaciones de Android
+movil/android/
+movil/ios/
+*.apk
+*.aab
+*.keystore
+
+# Sistema
+.DS_Store
+Thumbs.db
