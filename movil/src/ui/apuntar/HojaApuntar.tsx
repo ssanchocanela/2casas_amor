@@ -12,7 +12,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, ScrollView, TextInput, StyleSheet } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import type { MenuCasa, NinoId, RegistroNino, RegistroTipo, RespuestaAgenda } from '../../domain/tipos';
 import {
   APUNTES, avisoSinSi, caritasDe, definicion, nuevoMenuCasa, nuevoRegistro, problemaDelDato,
@@ -26,6 +26,7 @@ import { useFilas } from '../../estado/lectura';
 import { useSesion } from '../../estado/sesion';
 import { useCola } from '../../estado/cola';
 import { color, espacio, letra, radio, tonoApunte } from '../tema';
+import Hoja, { BotonGuardar, Cabecera, Campo } from '../Hoja';
 import Segmento from '../Segmento';
 
 export type InicioApuntar =
@@ -153,142 +154,123 @@ export default function HojaApuntar({ inicio, agenda, fecha, menus, alCerrar, al
   const def = definicion(tipo);
 
   return (
-    <Modal
+    <Hoja
       visible={!!inicio}
-      transparent
-      animationType="slide"
-      statusBarTranslucent
-      onRequestClose={paso === 'elegir' ? alCerrar : volver}
+      alCerrar={alCerrar}
+      alAtras={paso === 'elegir' ? alCerrar : volver}
     >
-      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.3)' }]} onPress={alCerrar} />
-        <View style={{
-          backgroundColor: color.fondo, maxHeight: '92%',
-          borderTopLeftRadius: 24, borderTopRightRadius: 24,
-        }}>
+      {paso === 'elegir' && (
+        <>
+          <Text style={[letra.titulo, { fontSize: 22, marginBottom: espacio.m }]}>Apuntar</Text>
+          <Segmento
+            opciones={[
+              ...ninos.map((n) => ({ valor: n.nino_id, texto: n.nombre, tono: n.color_hex })),
+              { valor: LOS_DOS, texto: 'Los dos', tono: color.acento },
+            ]}
+            valor={seleccion}
+            alCambiar={elegirNino}
+          />
           <View style={{
-            alignSelf: 'center', width: 40, height: 4, borderRadius: 2,
-            backgroundColor: color.borde, marginTop: espacio.s,
-          }} />
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ padding: espacio.l, paddingBottom: espacio.xxl }}
-          >
-            {paso === 'elegir' && (
-              <>
-                <Text style={[letra.titulo, { fontSize: 22, marginBottom: espacio.m }]}>Apuntar</Text>
-                <Segmento
-                  opciones={[
-                    ...ninos.map((n) => ({ valor: n.nino_id, texto: n.nombre, tono: n.color_hex })),
-                    { valor: LOS_DOS, texto: 'Los dos', tono: color.acento },
-                  ]}
-                  valor={seleccion}
-                  alCambiar={elegirNino}
-                />
-                <View style={{
-                  flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',
-                  rowGap: espacio.s, marginTop: espacio.m,
-                }}>
-                  {APUNTES.map((a) => (
-                    <Casilla
-                      key={a.tipo}
-                      apunte={a}
-                      activa={seleccion !== LOS_DOS || a.admiteLosDos}
-                      alTocar={() => { setTipo(a.tipo); setPaso('detalle'); }}
-                    />
-                  ))}
-                </View>
+            flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',
+            rowGap: espacio.s, marginTop: espacio.m,
+          }}>
+            {APUNTES.map((a) => (
+              <Casilla
+                key={a.tipo}
+                apunte={a}
+                activa={seleccion !== LOS_DOS || a.admiteLosDos}
+                alTocar={() => { setTipo(a.tipo); setPaso('detalle'); }}
+              />
+            ))}
+          </View>
 
-                <Text style={[letra.seccion, { marginTop: espacio.xl, marginBottom: espacio.s }]}>
-                  LO DE LA CASA
-                </Text>
+          <Text style={[letra.seccion, { marginTop: espacio.xl, marginBottom: espacio.s }]}>
+            LO DE LA CASA
+          </Text>
+          <Pressable
+            onPress={() => setPaso('menu')}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: espacio.m,
+              backgroundColor: color.tarjeta, borderRadius: radio.m,
+              borderWidth: 1, borderColor: color.borde, padding: espacio.m,
+            }}
+          >
+            <Text style={{ fontSize: 26 }}>🍳</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[letra.cuerpo, { fontWeight: '600' }]}>{esHoy ? 'Qué se ha cocinado hoy' : 'Qué se cocinó ese día'}</Text>
+              <Text style={letra.tenue} numberOfLines={1}>
+                {resumenMenu(menus.find((m) => m.fecha === hoy && m.casa_persona_id === casaMenu))
+                  ?? 'Comida, cena y fruta · una vez al día'}
+              </Text>
+            </View>
+            <Text style={[letra.suave, { fontSize: 20 }]}>›</Text>
+          </Pressable>
+        </>
+      )}
+
+      {paso === 'detalle' && def && (
+        <>
+          <Cabecera alVolver={volver}>
+            <Text style={{ color: colorNinos }}>{nombres}</Text> · {def.etiqueta}
+          </Cabecera>
+          {linea(casaDe(elegidos[0]))}
+
+          {def.detalle === 'si_no' && (
+            <View style={{ flexDirection: 'row', gap: espacio.m }}>
+              <BotonGrande texto="Sí" relleno alTocar={() => guardarDelNino({ valor: 'si' })} />
+              <BotonGrande texto="No" alTocar={() => guardarDelNino({ valor: 'no' })} />
+            </View>
+          )}
+
+          {def.detalle === 'escala' && (
+            <View style={{ flexDirection: 'row', gap: espacio.xs }}>
+              {caritasDe(tipo).map((c) => (
                 <Pressable
-                  onPress={() => setPaso('menu')}
+                  key={c.escala}
+                  onPress={() => guardarDelNino({ escala: c.escala })}
                   style={{
-                    flexDirection: 'row', alignItems: 'center', gap: espacio.m,
+                    flex: 1, alignItems: 'center', paddingVertical: espacio.l,
                     backgroundColor: color.tarjeta, borderRadius: radio.m,
-                    borderWidth: 1, borderColor: color.borde, padding: espacio.m,
+                    borderWidth: 1, borderColor: color.borde,
                   }}
                 >
-                  <Text style={{ fontSize: 26 }}>🍳</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[letra.cuerpo, { fontWeight: '600' }]}>{esHoy ? 'Qué se ha cocinado hoy' : 'Qué se cocinó ese día'}</Text>
-                    <Text style={letra.tenue} numberOfLines={1}>
-                      {resumenMenu(menus.find((m) => m.fecha === hoy && m.casa_persona_id === casaMenu))
-                        ?? 'Comida, cena y fruta · una vez al día'}
-                    </Text>
-                  </View>
-                  <Text style={[letra.suave, { fontSize: 20 }]}>›</Text>
+                  <Text style={{ fontSize: 30 }}>{c.icono}</Text>
+                  <Text style={[letra.tenue, { fontSize: 12, marginTop: espacio.xs }]}>{c.texto}</Text>
                 </Pressable>
-              </>
-            )}
+              ))}
+            </View>
+          )}
 
-            {paso === 'detalle' && def && (
-              <>
-                <Cabecera alVolver={volver}>
-                  <Text style={{ color: colorNinos }}>{nombres}</Text> · {def.etiqueta}
-                </Cabecera>
-                {linea(casaDe(elegidos[0]))}
+          {def.detalle === 'texto' && (
+            <DetalleTexto
+              tipo={tipo}
+              sugerencias={tipo === 'medicacion'
+                ? agenda.tratamientos_activos
+                  .filter((t) => elegidos.includes(t.nino_id))
+                  .map((t) => [t.titulo, t.tratamiento].filter(Boolean).join(' · '))
+                : []}
+              alGuardar={(texto) => guardarDelNino({ valor: texto })}
+            />
+          )}
 
-                {def.detalle === 'si_no' && (
-                  <View style={{ flexDirection: 'row', gap: espacio.m }}>
-                    <BotonGrande texto="Sí" relleno alTocar={() => guardarDelNino({ valor: 'si' })} />
-                    <BotonGrande texto="No" alTocar={() => guardarDelNino({ valor: 'no' })} />
-                  </View>
-                )}
+          {def.detalle === 'si_no' && seleccion !== LOS_DOS && (
+            <UltimaSemana nino_id={seleccion} tipo={tipo} hoy={hoy} />
+          )}
+        </>
+      )}
 
-                {def.detalle === 'escala' && (
-                  <View style={{ flexDirection: 'row', gap: espacio.xs }}>
-                    {caritasDe(tipo).map((c) => (
-                      <Pressable
-                        key={c.escala}
-                        onPress={() => guardarDelNino({ escala: c.escala })}
-                        style={{
-                          flex: 1, alignItems: 'center', paddingVertical: espacio.l,
-                          backgroundColor: color.tarjeta, borderRadius: radio.m,
-                          borderWidth: 1, borderColor: color.borde,
-                        }}
-                      >
-                        <Text style={{ fontSize: 30 }}>{c.icono}</Text>
-                        <Text style={[letra.tenue, { fontSize: 12, marginTop: espacio.xs }]}>{c.texto}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
-
-                {def.detalle === 'texto' && (
-                  <DetalleTexto
-                    tipo={tipo}
-                    sugerencias={tipo === 'medicacion'
-                      ? agenda.tratamientos_activos
-                        .filter((t) => elegidos.includes(t.nino_id))
-                        .map((t) => [t.titulo, t.tratamiento].filter(Boolean).join(' · '))
-                      : []}
-                    alGuardar={(texto) => guardarDelNino({ valor: texto })}
-                  />
-                )}
-
-                {def.detalle === 'si_no' && seleccion !== LOS_DOS && (
-                  <UltimaSemana nino_id={seleccion} tipo={tipo} hoy={hoy} />
-                )}
-              </>
-            )}
-
-            {paso === 'menu' && (
-              <>
-                <Cabecera alVolver={volver}>Lo de la casa</Cabecera>
-                {linea(casaMenu)}
-                <DetalleMenu
-                  key={casaMenu}
-                  actual={menus.find((m) => m.fecha === hoy && m.casa_persona_id === casaMenu)}
-                  alGuardar={guardarDeLaCasa}
-                />
-              </>
-            )}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+      {paso === 'menu' && (
+        <>
+          <Cabecera alVolver={volver}>Lo de la casa</Cabecera>
+          {linea(casaMenu)}
+          <DetalleMenu
+            key={casaMenu}
+            actual={menus.find((m) => m.fecha === hoy && m.casa_persona_id === casaMenu)}
+            alGuardar={guardarDeLaCasa}
+          />
+        </>
+      )}
+    </Hoja>
   );
 }
 
@@ -340,17 +322,6 @@ function Casilla({ apunte, activa, alTocar }: {
   );
 }
 
-function Cabecera({ alVolver, children }: { alVolver: () => void; children: React.ReactNode }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: espacio.s }}>
-      <Pressable onPress={alVolver} hitSlop={12} accessibilityLabel="Volver">
-        <Text style={{ fontSize: 26, color: color.textoSuave }}>‹</Text>
-      </Pressable>
-      <Text style={[letra.titulo, { fontSize: 22, flexShrink: 1 }]}>{children}</Text>
-    </View>
-  );
-}
-
 function BotonGrande({ texto, relleno, alTocar }: { texto: string; relleno?: boolean; alTocar: () => void }) {
   return (
     <Pressable
@@ -363,43 +334,6 @@ function BotonGrande({ texto, relleno, alTocar }: { texto: string; relleno?: boo
     >
       <Text style={{ fontSize: 26, fontWeight: '700', color: relleno ? '#fff' : color.aviso }}>{texto}</Text>
     </Pressable>
-  );
-}
-
-function BotonGuardar({ activo, alTocar }: { activo: boolean; alTocar: () => void }) {
-  return (
-    <Pressable
-      onPress={alTocar}
-      disabled={!activo}
-      style={{
-        marginTop: espacio.l, borderRadius: radio.m, paddingVertical: espacio.l, alignItems: 'center',
-        backgroundColor: activo ? color.acento : color.borde,
-      }}
-    >
-      <Text style={{ fontSize: 16, fontWeight: '700', color: activo ? '#fff' : color.textoTenue }}>Guardar</Text>
-    </Pressable>
-  );
-}
-
-function Campo({ etiqueta, valor, alCambiar, ayuda, multilinea }: {
-  etiqueta: string; valor: string; alCambiar: (t: string) => void; ayuda?: string; multilinea?: boolean;
-}) {
-  return (
-    <View style={{ marginBottom: espacio.m }}>
-      <Text style={[letra.seccion, { marginBottom: espacio.xs }]}>{etiqueta.toUpperCase()}</Text>
-      <TextInput
-        value={valor}
-        onChangeText={alCambiar}
-        placeholder={ayuda}
-        placeholderTextColor={color.textoTenue}
-        multiline={multilinea}
-        style={{
-          backgroundColor: color.tarjeta, borderWidth: 1, borderColor: color.borde,
-          borderRadius: radio.m, padding: espacio.m, fontSize: 16, color: color.texto,
-          minHeight: multilinea ? 80 : undefined, textAlignVertical: multilinea ? 'top' : 'center',
-        }}
-      />
-    </View>
   );
 }
 

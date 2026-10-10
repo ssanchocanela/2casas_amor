@@ -95,12 +95,23 @@ export function useLectura<T>(clave: string | null, pedir: () => Promise<T>, opc
  */
 export function useFilas<T extends { id: string }>(tabla: string, rango: Rango, activo = true) {
   const { credenciales } = useSesion();
-  useCola(); // se vuelve a pintar cuando cambia la cola
+  const { pendientes } = useCola(); // se vuelve a pintar cuando cambia la cola
   const { desde, hasta, nino } = rango;
   const lectura = useLectura(
     credenciales && activo ? `filas:${tabla}:${desde}:${hasta}:${nino ?? ''}` : null,
     () => listar<T>(credenciales!, tabla, { desde, hasta, ...(nino ? { nino } : {}) }),
     { guardar: false, alRecibir: (r) => guardarFilas(tabla, { desde, hasta, nino }, r.filas) },
   );
-  return { filas: leerFilas<T>(tabla, rango), estado: lectura.estado, refrescar: lectura.refrescar };
+
+  // Al vaciarse la cola hay que volver a leer: lo recién subido deja de estar
+  // en la cola y, en cuanto Hoy olvida lo confirmado, desaparecería de la
+  // pantalla hasta la siguiente lectura.
+  const { refrescar } = lectura;
+  const pendientesAntes = useRef(pendientes);
+  useEffect(() => {
+    if (pendientes < pendientesAntes.current) refrescar();
+    pendientesAntes.current = pendientes;
+  }, [pendientes, refrescar]);
+
+  return { filas: leerFilas<T>(tabla, rango), estado: lectura.estado, refrescar };
 }

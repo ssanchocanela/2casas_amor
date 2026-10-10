@@ -21,11 +21,19 @@ import type {
   EventoEscolar, Lectura, MenuCasa, Nino, RegistroNino, SaludEvento, SaludMedida, Tarea,
 } from '../../src/domain/tipos';
 import { avisoSinSi, definicion, ultimaSemana } from '../../src/domain/apuntes';
+import { cambiosFicha, conEstado, valoresDe } from '../../src/domain/fichas';
 import { lunesDe, semanaDe } from '../../src/domain/calendario';
-import { diaCorto, diaYNumero, fechaCorta, hoyMadrid, letraDia, sumarDias } from '../../src/domain/fechas';
 import {
-  ETIQUETA_SALUD, agruparTareas, celda, filasRejilla, nombreEquipamiento, tablaHorario, tratamientosActivos,
+  ahoraMadrid, diaCorto, diaYNumero, fechaCorta, hoyMadrid, letraDia, sumarDias,
+} from '../../src/domain/fechas';
+import {
+  ETIQUETA_SALUD, agruparTareas, celda, filasRejilla, hecha, nombreEquipamiento, tablaHorario, tratamientosActivos,
 } from '../../src/domain/ninos';
+import { deshacer, type Deshacer } from '../../src/db/apuntar';
+import { editarFicha } from '../../src/db/fichas';
+import { useCola } from '../../src/estado/cola';
+import AvisoDeshacer from '../../src/ui/AvisoDeshacer';
+import HojaFicha, { type AbrirFicha } from '../../src/ui/fichas/HojaFicha';
 import Segmento from '../../src/ui/Segmento';
 import { color, espacio, letra, radio, tonoApunte } from '../../src/ui/tema';
 
@@ -45,8 +53,12 @@ const abrirDia = (fecha: string) => router.push(`/dia/${fecha}`);
 
 export default function Ninos() {
   const { ninos } = useSesion();
+  const { subir } = useCola();
   const [ninoId, setNinoId] = useState(() => recuperar<string>(CLAVE_ULTIMO_NINO) ?? '');
   const [pestana, setPestana] = useState<Pestana>('dia');
+  // La ficha que se está añadiendo o corrigiendo, y el "deshacer" de después.
+  const [ficha, setFicha] = useState<AbrirFicha | null>(null);
+  const [aviso, setAviso] = useState<{ d: Deshacer; texto: string; clave: number } | null>(null);
   const nino = ninos.find((n) => n.id === ninoId) ?? ninos[0];
 
   if (!nino) return <View style={{ flex: 1, backgroundColor: color.fondo }} />;
@@ -56,7 +68,13 @@ export default function Ninos() {
     recordar(CLAVE_ULTIMO_NINO, id);
   }
 
+  function guardada(d: Deshacer, texto: string) {
+    setFicha(null);
+    setAviso({ d, texto, clave: Date.now() });
+  }
+
   return (
+    <View style={{ flex: 1, backgroundColor: color.fondo }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: color.fondo }}
       contentContainerStyle={{
@@ -90,9 +108,21 @@ export default function Ninos() {
       </View>
 
       {pestana === 'dia' && <DiaADia key={nino.id} nino={nino} />}
-      {pestana === 'colegio' && <Colegio nino={nino} />}
-      {pestana === 'salud' && <Salud nino={nino} />}
+      {pestana === 'colegio' && <Colegio nino={nino} abrir={setFicha} alGuardar={guardada} />}
+      {pestana === 'salud' && <Salud nino={nino} abrir={setFicha} />}
     </ScrollView>
+
+    <HojaFicha abrir={ficha} alCerrar={() => setFicha(null)} alGuardar={guardada} />
+
+    {aviso && (
+      <AvisoDeshacer
+        key={aviso.clave}
+        texto={aviso.texto}
+        alDeshacer={() => { if (deshacer(aviso.d)) subir(); setAviso(null); }}
+        alTerminar={() => setAviso(null)}
+      />
+    )}
+    </View>
   );
 }
 
@@ -247,8 +277,13 @@ function DiaADia({ nino }: { nino: Nino }) {
 
 // ── colegio ───────────────────────────────────────────────────────────
 
-function Colegio({ nino }: { nino: Nino }) {
+function Colegio({ nino, abrir, alGuardar }: {
+  nino: Nino;
+  abrir: (f: AbrirFicha) => void;
+  alGuardar: (d: Deshacer, texto: string) => void;
+}) {
   const { horarioLectivo, extraescolares, horarioCentro, config } = useSesion();
+  const { subir } = useCola();
   const hoy = hoyMadrid();
   const domingo = semanaDe(hoy)[6];
   const curso = config.curso_escolar;
@@ -264,9 +299,27 @@ function Colegio({ nino }: { nino: Nino }) {
   const lecturas = useFilas<Lectura>('lecturas', { desde: sumarDias(hoy, -365), hasta: hoy, nino: nino.id });
   const eventos = useFilas<EventoEscolar>('eventos', { desde: hoy, hasta: sumarDias(hoy, 90), nino: nino.id });
 
-  const grupos = agruparTareas(tareas.filas.filter((t) => t.nino_id === nino.id), hoy, domingo);
+  // Con lo de la cola mezclado: lo que se acaba de apuntar se ve ya, aunque
+  // todavía no haya subido.
+  const susTareas = conPendientes<Tarea>('tareas', tareas.filas, (t) => t.nino_id === nino.id)
+    .filter((t) => t.nino_id === nino.id);
+  const susEventos = conPendientes<EventoEscolar>('eventos', eventos.filas, (e) => !e.nino_id || e.nino_id === nino.id)
+    .filter((e) => !e.nino_id || e.nino_id === nino.id);
+
+  const grupos = agruparTareas(susTareas, hoy, domingo);
   const sinTareas = !Object.values(grupos).some((g) => g.length);
-  const suyasLecturas = lecturas.filas.filter((l) => l.nino_id === nino.id && !l.eliminado_en);
+  const suyasLecturas = conPendientes<Lectura>('lecturas', lecturas.filas, (l) => l.nino_id === nino.id)
+    .filter((l) => l.nino_id === nino.id);
+
+  /** Un toque en la casilla: hecha o pendiente otra vez. */
+  function alternar(t: Tarea) {
+    const antes = valoresDe('tareas', t);
+    const ahora = conEstado('tareas', antes, hecha(t) ? 'pendiente' : 'hecha', ahoraMadrid().marca);
+    const d = editarFicha('tareas', t.id, antes, cambiosFicha(antes, ahora));
+    if (!d) return;
+    subir();
+    alGuardar(d, `${t.titulo} · ${hecha(t) ? 'otra vez pendiente' : 'hecha'}`);
+  }
   const leyendo = suyasLecturas.filter((l) => !l.fecha_fin);
   const leidas = suyasLecturas.filter((l) => l.fecha_fin).sort((a, b) => (b.fecha_fin ?? '').localeCompare(a.fecha_fin ?? '')).slice(0, 3);
 
@@ -326,19 +379,35 @@ function Colegio({ nino }: { nino: Nino }) {
         )}
       </Seccion>
 
-      <Seccion titulo="TAREAS">
+      <Seccion titulo="TAREAS" alAnadir={() => abrir({ tabla: 'tareas', nino_id: nino.id })}>
         {sinTareas && <Text style={letra.tenue}>Sin tareas apuntadas.</Text>}
-        <GrupoTareas titulo="Atrasadas" tareas={grupos.atrasadas} tono={color.error} />
-        <GrupoTareas titulo="Vence hoy" tareas={grupos.hoy} />
-        <GrupoTareas titulo="Esta semana" tareas={grupos.semana} />
-        <GrupoTareas titulo="Más adelante" tareas={grupos.despues} />
-        <GrupoTareas titulo="Hechas" tareas={grupos.hechas.slice(0, 5)} tono={color.textoTenue} />
+        {([
+          ['Atrasadas', grupos.atrasadas, color.error],
+          ['Vence hoy', grupos.hoy, undefined],
+          ['Esta semana', grupos.semana, undefined],
+          ['Más adelante', grupos.despues, undefined],
+          ['Hechas', grupos.hechas.slice(0, 5), color.textoTenue],
+        ] as [string, Tarea[], string | undefined][]).map(([titulo, lista, tono]) => (
+          <GrupoTareas
+            key={titulo}
+            titulo={titulo}
+            tareas={lista}
+            tono={tono}
+            alAbrir={(t) => abrir({ tabla: 'tareas', fila: t, nino_id: nino.id })}
+            alAlternar={alternar}
+          />
+        ))}
       </Seccion>
 
-      <Seccion titulo="LECTURAS">
+      <Seccion titulo="LECTURAS" alAnadir={() => abrir({ tabla: 'lecturas', nino_id: nino.id })}>
         {suyasLecturas.length === 0 && <Text style={letra.tenue}>Sin lecturas apuntadas.</Text>}
         {[...leyendo, ...leidas].map((l) => (
-          <View key={l.id} style={{ paddingVertical: 3 }}>
+          <Pressable
+            key={l.id}
+            onPress={() => abrir({ tabla: 'lecturas', fila: l, nino_id: nino.id })}
+            style={{ paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: espacio.s }}
+          >
+            <View style={{ flex: 1 }}>
             <Text style={letra.cuerpo}>
               {l.titulo}{l.autor ? <Text style={letra.tenue}>{'  ' + l.autor}</Text> : null}
             </Text>
@@ -347,75 +416,134 @@ function Colegio({ nino }: { nino: Nino }) {
               {l.paginas_leidas ? ` · ${l.paginas_leidas}${l.paginas_totales ? ` de ${l.paginas_totales}` : ''} páginas` : ''}
               {l.valoracion ? ` · ${'★'.repeat(Math.max(0, Math.min(5, Number(l.valoracion))))}` : ''}
             </Text>
-          </View>
+            </View>
+            {l.pendiente && <Punto />}
+          </Pressable>
         ))}
       </Seccion>
 
-      <Seccion titulo="EVENTOS PRÓXIMOS">
-        {eventos.filas.length === 0 && <Text style={letra.tenue}>Nada en los próximos tres meses.</Text>}
-        {eventos.filas.map((e) => (
-          <View key={e.id} style={{ paddingVertical: 3 }}>
-            <Text style={letra.cuerpo}>{e.titulo}</Text>
-            <Text style={letra.tenue}>
-              {diaYNumero(e.fecha_inicio)}{e.fecha_fin && e.fecha_fin !== e.fecha_inicio ? ` al ${diaYNumero(e.fecha_fin)}` : ''}
-              {e.lugar ? ` · ${e.lugar}` : ''}{e.notas ? ` · ${e.notas}` : ''}
-            </Text>
-          </View>
+      <Seccion titulo="EVENTOS PRÓXIMOS" alAnadir={() => abrir({ tabla: 'eventos', nino_id: nino.id })}>
+        {susEventos.length === 0 && <Text style={letra.tenue}>Nada en los próximos tres meses.</Text>}
+        {susEventos.map((e) => (
+          <Pressable
+            key={e.id}
+            onPress={() => abrir({ tabla: 'eventos', fila: e, nino_id: nino.id })}
+            style={{ paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: espacio.s }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={letra.cuerpo}>{e.titulo}</Text>
+              <Text style={letra.tenue}>
+                {diaYNumero(e.fecha_inicio)}{e.fecha_fin && e.fecha_fin !== e.fecha_inicio ? ` al ${diaYNumero(e.fecha_fin)}` : ''}
+                {e.hora_inicio ? ` · ${e.hora_inicio}` : ''}
+                {e.lugar ? ` · ${e.lugar}` : ''}{e.notas ? ` · ${e.notas}` : ''}
+              </Text>
+            </View>
+            {e.pendiente && <Punto />}
+          </Pressable>
         ))}
       </Seccion>
     </>
   );
 }
 
-function GrupoTareas({ titulo, tareas, tono }: { titulo: string; tareas: Tarea[]; tono?: string }) {
+function GrupoTareas({ titulo, tareas, tono, alAbrir, alAlternar }: {
+  titulo: string;
+  tareas: (Tarea & { pendiente?: boolean })[];
+  tono?: string;
+  alAbrir: (t: Tarea) => void;
+  alAlternar: (t: Tarea) => void;
+}) {
   if (!tareas.length) return null;
   return (
     <View style={{ marginBottom: espacio.s }}>
       <Text style={[letra.suave, { fontWeight: '600', color: tono ?? color.textoSuave }]}>{titulo}</Text>
-      {tareas.map((t) => (
-        <View key={t.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: espacio.s, paddingVertical: 2 }}>
-          <Text style={[letra.cuerpo, { flexShrink: 1 }]}>
-            {t.titulo}{t.asignatura ? <Text style={letra.tenue}>{'  ' + t.asignatura}</Text> : null}
-          </Text>
-          <Text style={letra.tenue}>{diaCorto(t.fecha_entrega)} {Number(t.fecha_entrega.slice(8))}</Text>
-        </View>
-      ))}
+      {tareas.map((t) => {
+        const marcada = hecha(t);
+        return (
+          <Pressable
+            key={t.id}
+            onPress={() => alAbrir(t)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: espacio.s, paddingVertical: 3 }}
+          >
+            {/* Un toque aquí la da por hecha; en el resto de la línea, se corrige. */}
+            <Pressable
+              onPress={() => alAlternar(t)}
+              hitSlop={10}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: marcada }}
+              accessibilityLabel={`${t.titulo}: ${marcada ? 'hecha' : 'pendiente'}`}
+              style={{
+                width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center',
+                borderColor: marcada ? color.acento : color.borde,
+                backgroundColor: marcada ? color.acento : 'transparent',
+              }}
+            >
+              {marcada && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>✓</Text>}
+            </Pressable>
+            <Text style={[letra.cuerpo, { flex: 1, textDecorationLine: marcada ? 'line-through' : 'none' }]}>
+              {t.titulo}{t.asignatura ? <Text style={letra.tenue}>{'  ' + t.asignatura}</Text> : null}
+            </Text>
+            {t.pendiente && <Punto />}
+            <Text style={letra.tenue}>{diaCorto(t.fecha_entrega)} {Number(t.fecha_entrega.slice(8))}</Text>
+          </Pressable>
+        );
+      })}
     </View>
+  );
+}
+
+/** Guardado en el móvil, pendiente de subir. */
+function Punto() {
+  return (
+    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color.pendiente }} />
   );
 }
 
 // ── salud ─────────────────────────────────────────────────────────────
 
-function Salud({ nino }: { nino: Nino }) {
+function Salud({ nino, abrir }: { nino: Nino; abrir: (f: AbrirFicha) => void }) {
   const hoy = hoyMadrid();
-  const eventos = useFilas<SaludEvento>('salud_eventos', { desde: sumarDias(hoy, -730), hasta: hoy, nino: nino.id });
-  const medidas = useFilas<SaludMedida>('salud_medidas', { desde: sumarDias(hoy, -3650), hasta: hoy, nino: nino.id });
+  // Una medida o una consulta se pueden apuntar con fecha de mañana (la cita
+  // que ya está puesta), así que el rango llega un poco más allá de hoy.
+  const eventos = useFilas<SaludEvento>('salud_eventos', { desde: sumarDias(hoy, -730), hasta: sumarDias(hoy, 90), nino: nino.id });
+  const medidas = useFilas<SaludMedida>('salud_medidas', { desde: sumarDias(hoy, -3650), hasta: sumarDias(hoy, 90), nino: nino.id });
 
-  const suyos = eventos.filas.filter((e) => e.nino_id === nino.id && !e.eliminado_en);
+  const suyos = conPendientes<SaludEvento>('salud_eventos', eventos.filas, (e) => e.nino_id === nino.id)
+    .filter((e) => e.nino_id === nino.id);
   const activos = tratamientosActivos(suyos, hoy);
   const historial = [...suyos].sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const susMedidas = medidas.filas.filter((m) => m.nino_id === nino.id).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const susMedidas = conPendientes<SaludMedida>('salud_medidas', medidas.filas, (m) => m.nino_id === nino.id)
+    .filter((m) => m.nino_id === nino.id)
+    .sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   return (
     <>
       {activos.length > 0 && (
         <Seccion titulo="TRATAMIENTOS ACTIVOS">
           {activos.map(({ evento, quedan }) => (
-            <View key={evento.id} style={{ paddingVertical: 3 }}>
+            <Pressable
+              key={evento.id}
+              onPress={() => abrir({ tabla: 'salud_eventos', fila: evento, nino_id: nino.id })}
+              style={{ paddingVertical: 3 }}
+            >
               <Text style={[letra.cuerpo, { fontWeight: '600' }]}>{evento.titulo}</Text>
               {!!evento.tratamiento && <Text style={letra.suave}>{evento.tratamiento}</Text>}
               <Text style={[letra.tenue, { color: color.aviso }]}>
                 {quedan === null ? 'Sin fecha de fin' : quedan === 0 ? 'Último día hoy' : `Quedan ${quedan} ${quedan === 1 ? 'día' : 'días'}`}
               </Text>
-            </View>
+            </Pressable>
           ))}
         </Seccion>
       )}
 
-      <Seccion titulo="HISTORIAL">
+      <Seccion titulo="HISTORIAL" alAnadir={() => abrir({ tabla: 'salud_eventos', nino_id: nino.id })}>
         {historial.length === 0 && <Text style={letra.tenue}>Nada apuntado en los dos últimos años.</Text>}
         {historial.map((e) => (
-          <View key={e.id} style={{ flexDirection: 'row', gap: espacio.m, paddingVertical: espacio.xs }}>
+          <Pressable
+            key={e.id}
+            onPress={() => abrir({ tabla: 'salud_eventos', fila: e, nino_id: nino.id })}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: espacio.m, paddingVertical: espacio.xs }}
+          >
             <Text style={[letra.tenue, { width: 78 }]}>{fechaCorta(e.fecha)}</Text>
             <View style={{ flex: 1 }}>
               <Text style={letra.cuerpo}>
@@ -426,19 +554,25 @@ function Salud({ nino }: { nino: Nino }) {
               )}
               {!!e.diagnostico && <Text style={letra.suave}>{e.diagnostico}</Text>}
             </View>
-          </View>
+            {e.pendiente && <Punto />}
+          </Pressable>
         ))}
       </Seccion>
 
-      <Seccion titulo="PESO Y TALLA">
+      <Seccion titulo="PESO Y TALLA" alAnadir={() => abrir({ tabla: 'salud_medidas', nino_id: nino.id })}>
         {susMedidas.length === 0 && <Text style={letra.tenue}>Sin medidas apuntadas.</Text>}
         {susMedidas.map((m) => (
-          <View key={m.id} style={{ flexDirection: 'row', gap: espacio.m, paddingVertical: 2 }}>
+          <Pressable
+            key={m.id}
+            onPress={() => abrir({ tabla: 'salud_medidas', fila: m, nino_id: nino.id })}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: espacio.m, paddingVertical: 2 }}
+          >
             <Text style={[letra.tenue, { width: 78 }]}>{fechaCorta(m.fecha)}</Text>
-            <Text style={letra.cuerpo}>
+            <Text style={[letra.cuerpo, { flex: 1 }]}>
               {[m.peso_kg ? `${m.peso_kg} kg` : '', m.talla_cm ? `${m.talla_cm} cm` : ''].filter(Boolean).join(' · ') || '—'}
             </Text>
-          </View>
+            {m.pendiente && <Punto />}
+          </Pressable>
         ))}
       </Seccion>
     </>
@@ -452,10 +586,21 @@ const tarjeta = {
   borderWidth: 1, borderColor: color.borde, padding: espacio.m,
 };
 
-function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+function Seccion({ titulo, alAnadir, children }: {
+  titulo: string; alAnadir?: () => void; children: React.ReactNode;
+}) {
   return (
     <View style={{ marginTop: espacio.xl }}>
-      <Text style={[letra.seccion, { marginBottom: espacio.s }]}>{titulo}</Text>
+      <View style={{
+        flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: espacio.s,
+      }}>
+        <Text style={letra.seccion}>{titulo}</Text>
+        {alAnadir && (
+          <Pressable onPress={alAnadir} hitSlop={12} accessibilityRole="button" accessibilityLabel={`Añadir en ${titulo.toLowerCase()}`}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: color.acento }}>+ Añadir</Text>
+          </Pressable>
+        )}
+      </View>
       <View style={tarjeta}>{children}</View>
     </View>
   );

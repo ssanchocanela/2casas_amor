@@ -117,6 +117,8 @@ token de quien usa ese móvil. El APK no lleva ninguna credencial dentro.
 | `app/dia/[fecha].tsx`, `src/ui/dia/PantallaDia.tsx` | Hecho. Un día cualquiera con la misma pantalla que Hoy |
 | `app/(tabs)/ninos.tsx` | Hecho. Día a día (rejilla semanal), colegio y salud |
 | Apuntar (`src/ui/apuntar/`, `src/domain/apuntes.ts`) | Hecho |
+| Fichas de tareas, lecturas, eventos, salud y medidas (`src/ui/fichas/`, `src/domain/fichas.ts`, `src/db/fichas.ts`) | Hechas. Se añaden y corrigen desde Niños → Colegio y Niños → Salud |
+| La hoja que sube desde abajo (`src/ui/Hoja.tsx`, `src/ui/teclado.ts`) | Hecha. La comparten Apuntar y las fichas; aparta el teclado y la barra de Android |
 | Menú del comedor en imagen (`app/menu/[mes].tsx`, `src/db/menus.ts`) | Hecho. Desde Hoy → Comedor |
 | Cola sin conexión (`src/db/cola.ts`) | Hecha. Las escrituras suben con `sync` |
 | Caché de lectura (`src/db/cache.ts`, `src/estado/lectura.ts`) | Hecha. Se pinta desde el móvil y se refresca por detrás |

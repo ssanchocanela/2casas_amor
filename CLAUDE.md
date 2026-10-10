@@ -156,5 +156,43 @@ lectura y cola, con la prueba de aceptación en modo avión superada.
   URL de la hoja buena y su token al abrirse la primera vez. Para la siguiente
   versión, subir `android.versionCode` en `app.json`.
 
-Lo siguiente: instalar el APK en los dos móviles y, al terminar, el repositorio
-público anonimizado.
+- **Versión pública anonimizada** en https://github.com/ssanchocanela/2casas_amor,
+  con historial propio y datos ficticios (Niño1, Niña2, Colegio Ejemplo, horario
+  de ejemplo). **Este repositorio no se sube nunca**: lleva datos reales. Para
+  actualizar lo público, `python scripts/publicar_anonimizado.py` prepara y
+  comprueba `../2casas_amor-publico`, y el commit y el push se hacen desde allí.
+
+**APK 1.0.0 instalado y funcionando en los dos móviles** (14 de septiembre de
+2026), conectado a la hoja buena. El usuario lo está probando y apunta mejoras
+para la siguiente versión.
+
+**Versión 1.1** (9 de octubre de 2026), con las dos mejoras que salieron de
+usar la 1.0 a diario. `app.json` va por `version` 1.1.0 y `versionCode` 2. El
+backend no cambia: `tareas`, `lecturas` y `eventos` ya eran escribibles.
+
+- **El teclado ya no tapa lo que se escribe.** La hoja que sube desde abajo es
+  un `Modal`, y Android no le redimensiona la ventana: ahora se mide el teclado
+  (`movil/src/ui/teclado.ts`), se aparta el contenido esa altura y, con el
+  teclado cerrado, el hueco es el de la barra de navegación. Al tocar un campo
+  se le lleva arriba. Esa hoja es ya una pieza compartida
+  (`movil/src/ui/Hoja.tsx`) entre Apuntar y las fichas.
+- **Tareas, lecturas, eventos, consultas de salud y medidas se añaden y se
+  corrigen desde la app**, en Niños → Colegio y Niños → Salud: un `+ Añadir`
+  por sección, tocar una línea para corregirla y una casilla que da una tarea
+  por hecha de un toque. Los campos se declaran una vez en
+  `movil/src/domain/fichas.ts` (copia de las columnas de la hoja y de sus
+  listas cerradas) y de ahí salen formulario, validación y escritura; todo por
+  la cola, con deshacer. Borrar pide un segundo toque: el backend borra en
+  lógico y no admite desborrar. Una pauta solo sale como tratamiento activo si
+  el apunte es de tipo `medicacion` —la regla es del backend—, y el formulario
+  lo avisa si no lo es.
+- Las listas se releen al vaciarse la cola (`useFilas`): sin eso, lo recién
+  subido desaparecía de la pantalla hasta la siguiente lectura.
+
+**APK 1.1.0 instalado y funcionando** (9 de octubre de 2026).
+
+Lo siguiente, si salen más mejoras: una rama por mejora, subir
+`android.versionCode` (y `version`) en `app.json`, compilar con la misma clave
+de firma, y si cambia el backend, subir `VERSION_BACKEND` y reimplementar en
+las dos hojas. Lo público (github.com/ssanchocanela/2casas_amor) sigue en la
+1.0: se actualiza con `python scripts/publicar_anonimizado.py` cuando interese.

@@ -2,6 +2,7 @@ import React from 'react';
 import { Stack, Redirect, useSegments } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ProveedorSesion, useSesion } from '../src/estado/sesion';
 import { ProveedorCola } from '../src/estado/cola';
 import { color } from '../src/ui/tema';
@@ -35,11 +36,13 @@ function Puerta() {
 
 export default function Raiz() {
   return (
-    <ProveedorSesion>
-      <ProveedorCola>
-        <StatusBar style="dark" />
-        <Puerta />
-      </ProveedorCola>
-    </ProveedorSesion>
+    <SafeAreaProvider>
+      <ProveedorSesion>
+        <ProveedorCola>
+          <StatusBar style="dark" />
+          <Puerta />
+        </ProveedorCola>
+      </ProveedorSesion>
+    </SafeAreaProvider>
   );
 }

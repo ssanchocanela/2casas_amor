@@ -158,11 +158,37 @@ app no debe hacer que lo parezcan.
 - Lecturas, con lo que está leyendo ahora arriba.
 - Eventos próximos.
 
+**Las tres se añaden y se corrigen desde aquí**, y lo mismo vale para Salud. Cada sección tiene su
+*+ Añadir*, y tocar una línea abre la misma ficha para corregirla. La casilla
+de una tarea la da por hecha de un toque, sin abrir nada. El formulario sale de
+la declaración de `src/domain/fichas.ts`, que copia los campos de la hoja: para
+añadir un campo se añade allí una línea, no una pantalla.
+
+Lo que no se pregunta: el niño viene puesto (el de la ficha abierta), el tipo
+trae el valor de siempre y la fecha de entrega viene puesta en mañana. Las
+fechas no se escriben a mano —chips de *hoy · mañana · +1 semana* y flechas de
+un día—, porque escribir `2026-10-16` en un móvil es pedir una errata.
+
+El **borrado es la única excepción a la regla de no preguntar**: pide un
+segundo toque. El backend borra en lógico rellenando `eliminado_en` y no admite
+desborrar, así que un "deshacer" que a veces funcionara sería peor que no
+tenerlo. Añadir y corregir sí lo ofrecen.
+
 ### Salud
 - Línea de tiempo de `salud_eventos`, la más reciente arriba.
 - Alergias y notas médicas siempre visibles en la cabecera, no enterradas.
 - Tratamientos activos destacados, con los días que quedan.
 - Peso y talla en lista (gráfica en la fase 2).
+
+Consultas y medidas se añaden y se corrigen con la misma ficha que las de
+Colegio: `+ Añadir` en *Historial* y en *Peso y talla*, y tocar una línea —o un
+tratamiento activo— para corregirla. El peso admite coma y se guarda con punto,
+que es como vive en la hoja.
+
+Una pauta solo cuenta como **tratamiento activo** si el apunte es de tipo
+*Medicación*; esa es la regla del backend (`agenda.gs`) y de la ficha del niño.
+Si se escribe una pauta con otro tipo, el formulario lo avisa ahí mismo, en vez
+de dejar que se apunte algo que luego no aparece en ningún sitio.
 
 ---
 

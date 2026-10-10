@@ -95,7 +95,7 @@ export function tablaHorario(clases: Clase[]) {
   return { franjas: ordenadas, clasesDe };
 }
 
-const hecha = (t: Tarea) => t.estado === 'hecha' || t.estado === 'entregada';
+export const hecha = (t: Tarea) => t.estado === 'hecha' || t.estado === 'entregada';
 
 export interface TareasAgrupadas {
   atrasadas: Tarea[];

@@ -147,6 +147,7 @@ export interface RegistroNino {
 
 export interface Tarea {
   id: string;
+  creado_en?: string;
   nino_id: NinoId;
   asignatura?: string;
   titulo: string;
@@ -157,6 +158,7 @@ export interface Tarea {
   estado: 'pendiente' | 'en_curso' | 'hecha' | 'entregada';
   prioridad?: 'normal' | 'alta';
   completada_en?: string;
+  autor_id?: PersonaId;
   eliminado_en?: string;
 }
 
@@ -170,7 +172,13 @@ export interface EventoEscolar {
   hora_inicio?: string;
   hora_fin?: string;
   lugar?: string;
+  coste?: number | string;
+  pagado_por?: PersonaId;
   notas?: string;
+  /** Lo rellena la app al volcar el evento a Google Calendar. */
+  calendar_event_id?: string;
+  autor_id?: PersonaId;
+  eliminado_en?: string;
 }
 
 export interface TratamientoActivo {
